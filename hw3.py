@@ -66,6 +66,14 @@ def compute_color(ray, objects, lights, ambient, camera, depth):
         reflected_color = compute_color(reflect_ray, objects, lights, ambient, camera, depth - 1)
         color += reflected_color * nearest_object.reflection
 
+    # Refraction (simplified - ray continues in same direction)
+    refraction = getattr(nearest_object, 'refraction', 0)
+    if depth > 1 and refraction > 0:
+        refracted_origin = intersection - EPSILON * normal
+        refracted_ray = Ray(refracted_origin, ray.direction)
+        refracted_color = compute_color(refracted_ray, objects, lights, ambient, camera, depth - 1)
+        color = color * (1 - refraction) + refracted_color * refraction
+
     return color
 
 
@@ -92,10 +100,42 @@ def render_scene(camera, ambient, lights, objects, screen_size, max_depth):
     return image
 
 
-# Write your own objects and lights
-# TODO
 def your_own_scene():
-    camera = np.array([0,0,1])
-    lights = []
-    objects = []
+    # Glass sphere containing a small red sphere inside
+    outer_sphere = Sphere([0, 0.2, -1.5], 0.7)
+    outer_sphere.set_material([0.05, 0.05, 0.1], [0.1, 0.1, 0.2], [1, 1, 1], 100, 0.2, refraction=0.7)
+
+    inner_sphere = Sphere([0, 0.2, -1.5], 0.25)
+    inner_sphere.set_material([1, 0, 0], [1, 0, 0], [1, 1, 1], 50, 0.3)
+
+    # A green diamond to the right
+    v_list = np.array([
+        [1.0, -0.2, -2.0],
+        [1.5, 0.0, -1.5],
+        [2.0, -0.1, -2.0],
+        [1.5, 0.7, -1.8],
+        [1.5, -0.7, -1.7]
+    ])
+    diamond = Diamond(v_list)
+    diamond.set_material([0.0, 0.3, 0.0], [0, 0.8, 0], [0.5, 1, 0.5], 80, 0.4)
+    diamond.apply_materials_to_triangles()
+
+    # Floor and background planes
+    floor = Plane([0, 1, 0], [0, -0.5, 0])
+    floor.set_material([0.1, 0.1, 0.1], [0.3, 0.3, 0.3], [0.8, 0.8, 0.8], 500, 0.4)
+
+    background = Plane([0, 0, 1], [0, 0, -5])
+    background.set_material([0.1, 0.05, 0.2], [0.2, 0.1, 0.3], [0, 0, 0], 10, 0.0)
+
+    objects = [outer_sphere, inner_sphere, diamond, floor, background]
+
+    # Warm point light from upper left
+    light1 = PointLight(intensity=np.array([1, 0.9, 0.7]), position=np.array([-2, 2, 1]), kc=0.1, kl=0.1, kq=0.05)
+    # Cool spotlight from upper right
+    light2 = SpotLight(intensity=np.array([0.5, 0.7, 1.0]), position=np.array([2, 2, 0]),
+                       direction=[-1, -1, -1], kc=0.1, kl=0.1, kq=0.05)
+
+    lights = [light1, light2]
+    camera = np.array([0, 0.5, 2])
+
     return camera, lights, objects
