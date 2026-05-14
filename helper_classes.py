@@ -9,9 +9,8 @@ def normalize(vector):
 # This function gets a vector and the normal of the surface it hit
 # This function returns the vector that reflects from the surface
 def reflected(vector, axis):
-    # TODO:
-    v = np.array([0,0,0])
-    return v
+    n = normalize(axis)
+    return vector - 2 * np.dot(vector, n) * n
 
 ## Lights
 
@@ -25,22 +24,16 @@ class DirectionalLight(LightSource):
 
     def __init__(self, intensity, direction):
         super().__init__(intensity)
-        # TODO
+        self.direction = normalize(np.array(direction, dtype=np.float64))
 
-    # This function returns the ray that goes from the light source to a point
-    def get_light_ray(self,intersection_point):
-        # TODO
-        return Ray()
+    def get_light_ray(self, intersection_point):
+        return Ray(intersection_point - self.direction * 1000, self.direction)
 
-    # This function returns the distance from a point to the light source
     def get_distance_from_light(self, intersection):
-        #TODO
-        pass
+        return np.inf
 
-    # This function returns the light intensity at a point
     def get_intensity(self, intersection):
-        #TODO
-        pass
+        return self.intensity
 
 
 class PointLight(LightSource):
@@ -56,35 +49,35 @@ class PointLight(LightSource):
         return Ray(self.position, normalize(intersection - self.position))
 
     # This function returns the distance from a point to the light source
-    def get_distance_from_light(self,intersection):
-        #TODO
-        pass
+    def get_distance_from_light(self, intersection):
+        return np.linalg.norm(self.position - intersection)
 
     # This function returns the light intensity at a point
     def get_intensity(self, intersection):
-        # calculate distance between light source and intersection 
-        # calculate and return the light intensity based on kc, kl, kq
-        #TODO
-        pass
+        d = self.get_distance_from_light(intersection)
+        return self.intensity / (self.kc + self.kl * d + self.kq * d * d)
 
 
 class SpotLight(LightSource):
     def __init__(self, intensity, position, direction, kc, kl, kq):
         super().__init__(intensity)
-        # TODO
+        self.position = np.array(position, dtype=np.float64)
+        self.direction = normalize(np.array(direction, dtype=np.float64))
+        self.kc = kc
+        self.kl = kl
+        self.kq = kq
 
-    # This function returns the ray that goes from the light source to a point
     def get_light_ray(self, intersection):
-        #TODO
-        pass
+        return Ray(self.position, normalize(intersection - self.position))
 
     def get_distance_from_light(self, intersection):
-        #TODO
-        pass
+        return np.linalg.norm(self.position - intersection)
 
     def get_intensity(self, intersection):
-        #TODO
-        pass
+        d = self.get_distance_from_light(intersection)
+        vec_to_point = normalize(intersection - self.position)
+        cos_angle = np.dot(vec_to_point, self.direction)
+        return self.intensity * cos_angle / (self.kc + self.kl * d + self.kq * d * d)
 
 
 class Ray:
@@ -95,10 +88,15 @@ class Ray:
     # The function is getting the collection of objects in the scene and looks for the one with minimum distance.
     # The function should return the nearest object and its distance (in two different arguments)
     def nearest_intersected_object(self, objects):
-        intersections = None
         nearest_object = None
         min_distance = np.inf
-        #TODO
+        for obj in objects:
+            result = obj.intersect(self)
+            if result is not None:
+                t, hit_obj = result
+                if t < min_distance:
+                    min_distance = t
+                    nearest_object = hit_obj
         return nearest_object, min_distance
 
 
@@ -141,14 +139,34 @@ class Triangle(Object3D):
         self.c = np.array(c)
         self.normal = self.compute_normal()
 
-    # computes normal to the trainagle surface. Pay attention to its direction!
     def compute_normal(self):
-        # TODO
-        pass
+        edge1 = self.b - self.a
+        edge2 = self.c - self.a
+        return normalize(np.cross(edge1, edge2))
 
     def intersect(self, ray: Ray):
-        # TODO
-        pass
+        denom = np.dot(self.normal, ray.direction)
+        if abs(denom) < 1e-6:
+            return None
+        t = np.dot(self.a - ray.origin, self.normal) / denom
+        if t < 0:
+            return None
+        P = ray.origin + t * ray.direction
+        # Barycentric coordinate test
+        v0 = self.c - self.a
+        v1 = self.b - self.a
+        v2 = P - self.a
+        d00 = np.dot(v0, v0)
+        d01 = np.dot(v0, v1)
+        d11 = np.dot(v1, v1)
+        d20 = np.dot(v2, v0)
+        d21 = np.dot(v2, v1)
+        inv_denom = 1.0 / (d00 * d11 - d01 * d01)
+        u = (d11 * d20 - d01 * d21) * inv_denom
+        v = (d00 * d21 - d01 * d20) * inv_denom
+        if u >= -1e-5 and v >= -1e-5 and u + v <= 1 + 1e-5:
+            return t, self
+        return None
 
 class Diamond(Object3D):
     """     
@@ -189,23 +207,46 @@ A /&&&&&&&&&&&&&&&&&&&&\ B &&&/ C
                  [4,1,0],
                  [4,2,1],
                  [2,4,0]]
-        # TODO
+        for indices in t_idx:
+            t = Triangle(self.v_list[indices[0]], self.v_list[indices[1]], self.v_list[indices[2]])
+            l.append(t)
         return l
 
     def apply_materials_to_triangles(self):
-        # TODO
-        pass
+        for t in self.triangle_list:
+            t.set_material(self.ambient, self.diffuse, self.specular, self.shininess, self.reflection)
 
     def intersect(self, ray: Ray):
-        # TODO
-        pass
+        min_t = np.inf
+        nearest = None
+        for t in self.triangle_list:
+            result = t.intersect(ray)
+            if result is not None and result[0] < min_t:
+                min_t = result[0]
+                nearest = result[1]
+        if nearest is not None:
+            return min_t, nearest
+        return None
 
 class Sphere(Object3D):
     def __init__(self, center, radius: float):
-        self.center = center
+        self.center = np.array(center, dtype=np.float64)
         self.radius = radius
 
     def intersect(self, ray: Ray):
-        #TODO
-        pass
+        L = ray.origin - self.center
+        a = np.dot(ray.direction, ray.direction)
+        b = 2 * np.dot(ray.direction, L)
+        c = np.dot(L, L) - self.radius * self.radius
+        disc = b * b - 4 * a * c
+        if disc < 0:
+            return None
+        sqrt_disc = np.sqrt(disc)
+        t1 = (-b - sqrt_disc) / (2 * a)
+        t2 = (-b + sqrt_disc) / (2 * a)
+        if t1 > 0:
+            return t1, self
+        elif t2 > 0:
+            return t2, self
+        return None
 
