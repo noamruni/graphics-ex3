@@ -39,12 +39,15 @@ def compute_color(ray, objects, lights, ambient, camera, depth):
             light_dir = normalize(light.position - intersection)
         light_distance = light.get_distance_from_light(intersection)
 
-        # Shadow check
+        # Shadow check (transparent objects don't fully block light)
         shadow_origin = intersection + EPSILON * normal
         shadow_ray = Ray(shadow_origin, light_dir)
         shadow_obj, shadow_dist = shadow_ray.nearest_intersected_object(objects)
         if shadow_obj is not None and shadow_dist < light_distance:
-            continue
+            if getattr(shadow_obj, 'refraction', 0) > 0:
+                pass  # transparent object — light passes through
+            else:
+                continue
 
         intensity = light.get_intensity(intersection)
 
@@ -101,39 +104,45 @@ def render_scene(camera, ambient, lights, objects, screen_size, max_depth):
 
 
 def your_own_scene():
-    # Glass sphere containing a small red sphere inside
-    outer_sphere = Sphere([0, 0.2, -1.5], 0.7)
-    outer_sphere.set_material([0.05, 0.05, 0.1], [0.1, 0.1, 0.2], [1, 1, 1], 100, 0.2, refraction=0.7)
+    # Crystal ball: transparent sphere containing a diamond
+    glass_sphere = Sphere([0, 0.3, -0.5], 0.6)
+    glass_sphere.set_material([0.01, 0.01, 0.02], [0.02, 0.02, 0.05], [1, 1, 1], 300, 0.05, refraction=0.95)
 
-    inner_sphere = Sphere([0, 0.2, -1.5], 0.25)
-    inner_sphere.set_material([1, 0, 0], [1, 0, 0], [1, 1, 1], 50, 0.3)
-
-    # A green diamond to the right
+    # Red gem diamond inside the sphere
     v_list = np.array([
-        [1.0, -0.2, -2.0],
-        [1.5, 0.0, -1.5],
-        [2.0, -0.1, -2.0],
-        [1.5, 0.7, -1.8],
-        [1.5, -0.7, -1.7]
+        [-0.15, 0.15, -0.5],
+        [0.15, 0.15, -0.35],
+        [0.15, 0.15, -0.65],
+        [0.0, 0.5, -0.5],
+        [0.0, 0.0, -0.5]
     ])
     diamond = Diamond(v_list)
-    diamond.set_material([0.0, 0.3, 0.0], [0, 0.8, 0], [0.5, 1, 0.5], 80, 0.4)
+    diamond.set_material([0.7, 0.05, 0.05], [1.0, 0.1, 0.1], [1, 0.5, 0.5], 60, 0.2)
     diamond.apply_materials_to_triangles()
 
-    # Floor and background planes
+    # Left triangle
+    tri_left = Triangle([-1.5, -0.5, -2.0], [-1.0, -0.5, -1.5], [-1.2, 0.5, -1.7])
+    tri_left.set_material([0.1, 0.3, 0.6], [0.2, 0.4, 0.8], [1, 1, 1], 100, 0.3)
+
+    # Right triangle
+    tri_right = Triangle([1.0, -0.5, -1.5], [1.5, -0.5, -2.0], [1.2, 0.5, -1.7])
+    tri_right.set_material([0.1, 0.6, 0.3], [0.2, 0.8, 0.4], [1, 1, 1], 100, 0.3)
+
+    # Floor plane
     floor = Plane([0, 1, 0], [0, -0.5, 0])
-    floor.set_material([0.1, 0.1, 0.1], [0.3, 0.3, 0.3], [0.8, 0.8, 0.8], 500, 0.4)
+    floor.set_material([0.2, 0.2, 0.2], [0.3, 0.3, 0.3], [0.6, 0.6, 0.6], 500, 0.3)
 
+    # Background plane
     background = Plane([0, 0, 1], [0, 0, -5])
-    background.set_material([0.1, 0.05, 0.2], [0.2, 0.1, 0.3], [0, 0, 0], 10, 0.0)
+    background.set_material([0.05, 0.02, 0.1], [0.1, 0.05, 0.15], [0, 0, 0], 10, 0.0)
 
-    objects = [outer_sphere, inner_sphere, diamond, floor, background]
+    objects = [glass_sphere, diamond, tri_left, tri_right, floor, background]
 
     # Warm point light from upper left
-    light1 = PointLight(intensity=np.array([1, 0.9, 0.7]), position=np.array([-2, 2, 1]), kc=0.1, kl=0.1, kq=0.05)
+    light1 = PointLight(intensity=np.array([1.5, 1.3, 1.0]), position=np.array([-2, 2, 1]), kc=0.1, kl=0.05, kq=0.02)
     # Cool spotlight from upper right
-    light2 = SpotLight(intensity=np.array([0.5, 0.7, 1.0]), position=np.array([2, 2, 0]),
-                       direction=[-1, -1, -1], kc=0.1, kl=0.1, kq=0.05)
+    light2 = SpotLight(intensity=np.array([1.0, 1.2, 1.5]), position=np.array([2, 2, 0]),
+                       direction=[-1, -1, -1], kc=0.1, kl=0.05, kq=0.02)
 
     lights = [light1, light2]
     camera = np.array([0, 0.5, 2])
